@@ -1,11 +1,17 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/prefix-dev/recipe-format/main/schema.json
 schema_version: 1
 
 context:
-  name: pyogrio
   version: "0.13.0"
+  cython_min: "3.1"
+  # to be update once python315 migration is "finished"
+  python_check_max: "3.14"
+  abi3_ext: ${{ "abi3.so" if unix else "pyd" }}
+  abi3_bins: |-
+    _err.${{ abi3_ext }} _geometry.${{ abi3_ext }} _io.${{ abi3_ext }} _ogr.${{ abi3_ext }} _vsi.${{ abi3_ext }}
 
 package:
-  name: ${{ name|lower }}
+  name: pyogrio
   version: ${{ version }}
 
 source:
@@ -13,40 +19,80 @@ source:
   sha256: 9614f27a1891113f80653e0b76b4233ea1fb3beeb1ac46d118ab22e1670f8f13
 
 build:
-  number: 0
-  skip: match(python, "<3.8") or python_impl == 'pypy'
+  number: 1
+  skip: is_abi3 and not is_python_min
+  script:
+    env:
+      PYOGRIO_LIMITED_API: ${{ "1" if is_abi3 else "0" }}
+      GDAL_VERSION: ${{ libgdal_core }}
+    content:
+      - if: win
+        then:
+          - set "GDAL_INCLUDE_PATH=%LIBRARY_INC%"
+          - set "GDAL_LIBRARY_PATH=%LIBRARY_LIB%"
+      - ${{ PYTHON }} -m pip install . -vv --no-deps --no-build-isolation --check-build-dependencies
+  python:
+    version_independent: ${{ is_abi3 }}
 
 requirements:
   build:
-    - if: build_platform != target_platform
-      then: python
-    - if: build_platform != target_platform
-      then: cross-python_${{ target_platform }}
-    - if: build_platform != target_platform
-      then: cython
-    - ${{ compiler('c') }}
+    - ${{ compiler("c") }}
+    - ${{ compiler("cxx") }}
     - ${{ stdlib("c") }}
-    - ${{ compiler('cxx') }}
+    - if: build_platform != target_platform
+      then:
+        - cross-python_${{ target_platform }}
+        - cython >=${{ cython_min }}
+        - if: is_abi3
+          then:
+            - python ${{ python_min }}.*
+            - python-abi3
+          else:
+            - python
   host:
-    - python
+    - cython >=${{ cython_min }}
+    - libgdal-core
     - pip
-    - setuptools
-    - cython
-    - libgdal-core
-    - versioneer
-    - if: match(python, "<3.11")
-      then: tomli
-  run:
     - python
+    - setuptools >=77
+    - versioneer >=0.28,<0.30
+    - if: is_abi3
+      then:
+        - python ${{ python_min }}.*
+        - python-abi3
+  run:
+    - certifi
     - libgdal-core
-    - packaging
     - numpy
+    - packaging
+    - python
+    - if: is_abi3
+      then:
+        - python >=${{ python_min }}
+        - python-abi3
 
 tests:
   - python:
-      imports:
-        - pyogrio
+      imports: pyogrio
       pip_check: false
+      python_version:
+        - if: is_abi3
+          then:
+            - ${{ python_min }}.*
+            - ${{ python_check_max }}.*
+  - requirements:
+      run:
+        - pytest
+        - if: is_abi3
+          then:
+            - python ${{ python_min }}.*
+            - abi3audit
+    script:
+      - pytest -vv --tb=long --color=yes --pyargs pyogrio
+      - if: is_abi3
+        then:
+          - cd "${{ '$SP_DIR' if unix else '%SP_DIR%' }}/pyogrio"
+          - abi3audit -s -v --assume-minimum-abi3 ${{ python_min }} ${{ abi3_bins }}
 
 about:
   license: MIT
@@ -56,13 +102,12 @@ about:
     Provide faster I/O using GDAL OGR to read / write vector geospatial files.
     Intended for use with libraries that consume WKB for their internal
     constructs, such as pygeos.
-  homepage: https://github.com/geopandas/pyogrio/
+  homepage: https://pypi.org/project/pyogrio
   repository: https://github.com/geopandas/pyogrio
-  documentation: https://pyogrio.readthedocs.io/
+  documentation: https://pyogrio.readthedocs.io
 
 extra:
   recipe-maintainers:
     - brendan-ward
     - jorisvandenbossche
     - martinfleis
-
