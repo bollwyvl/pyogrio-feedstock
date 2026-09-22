@@ -13,9 +13,9 @@ Development: https://github.com/geopandas/pyogrio
 
 Documentation: https://pyogrio.readthedocs.io/
 
-Provide faster I/O using GDAL OGR to read / write vector geospatial files.
-Intended for use with libraries that consume WKB for their internal
-constructs, such as pygeos.
+Pyogrio provides fast, bulk-oriented read and write access to GDAL/OGR
+vector data sources, such as ESRI Shapefile, GeoPackage, GeoJSON,
+and several others.
 
 Current build status
 ====================
