@@ -7,7 +7,7 @@ Home: https://pypi.org/project/pyogrio
 
 Package license: MIT
 
-Summary: Vectorized vector I/O using GDAL
+Summary: Vectorized spatial vector file format I/O using GDAL/OGR
 
 Development: https://github.com/geopandas/pyogrio
 
