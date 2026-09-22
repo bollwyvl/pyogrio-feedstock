@@ -6,9 +6,10 @@ context:
   cython_min: "3.1"
   # to be update once python315 migration is "finished"
   python_check_max: "3.14"
+  # for abi audit
   abi3_ext: ${{ "abi3.so" if unix else "pyd" }}
-  abi3_bins: |-
-    _err.${{ abi3_ext }} _geometry.${{ abi3_ext }} _io.${{ abi3_ext }} _ogr.${{ abi3_ext }} _vsi.${{ abi3_ext }}
+  abi3_bin_names: _err,_geometry,_io,_ogr,_vsi
+  abi3_bins: ${{ (abi3_bin_names ~ ",") | replace(",", "." ~ abi3_ext ~ " ") }}
 
 package:
   name: pyogrio
@@ -21,18 +22,16 @@ source:
 build:
   number: 1
   skip: is_abi3 and not is_python_min
-  script:
-    env:
-      PYOGRIO_LIMITED_API: ${{ "1" if is_abi3 else "0" }}
-      GDAL_VERSION: ${{ libgdal_core }}
-    content:
-      - if: win
-        then:
-          - set "GDAL_INCLUDE_PATH=%LIBRARY_INC%"
-          - set "GDAL_LIBRARY_PATH=%LIBRARY_LIB%"
-      - ${{ PYTHON }} -m pip install . -vv --no-deps --no-build-isolation --check-build-dependencies
   python:
     version_independent: ${{ is_abi3 }}
+  script:
+    env:
+      GDAL_INCLUDE_PATH: ${{ "${PREFIX}/include" if unix else "%LIBRARY_INC%" }}
+      GDAL_LIBRARY_PATH: ${{ "${PREFIX}/lib" if unix else "%LIBRARY_LIB%" }}
+      GDAL_VERSION: ${{ libgdal_core }}
+      PYOGRIO_LIMITED_API: ${{ "1" if is_abi3 else "0" }}
+    content:
+      - ${{ PYTHON }} -m pip install . -vv --no-deps --no-build-isolation --check-build-dependencies
 
 requirements:
   build:
@@ -55,7 +54,7 @@ requirements:
     - pip
     - python
     - setuptools >=77
-    - versioneer >=0.28,<0.30
+    - versioneer ==0.28
     - if: is_abi3
       then:
         - python ${{ python_min }}.*
@@ -72,6 +71,13 @@ requirements:
         - python-abi3
 
 tests:
+  - package_contents:
+      strict: true
+      files:
+        - etc/conda/test-files/pyogrio/**
+      site_packages:
+        - pyogrio/**
+        - pyogrio-${{ version }}.dist-info/**
   - python:
       imports: pyogrio
       pip_check: false
@@ -80,7 +86,10 @@ tests:
           then:
             - ${{ python_min }}.*
             - ${{ python_check_max }}.*
-  - requirements:
+  - files:
+      source:
+        - setup.cfg
+    requirements:
       run:
         - pytest
         - if: is_abi3
@@ -88,16 +97,18 @@ tests:
             - python ${{ python_min }}.*
             - abi3audit
     script:
-      - pytest -vv --tb=long --color=yes --pyargs pyogrio
+      # comment out testpaths, relying on --pyargs below
+      - python -c "p = __import__('pathlib').Path('setup.cfg'); p.write_bytes(p.read_bytes().replace(b'testpaths', b'# testpaths'))"
+      - pytest -vv --tb=long --color=yes --pyargs pyogrio -m "not network"
       - if: is_abi3
         then:
-          - cd "${{ '$SP_DIR' if unix else '%SP_DIR%' }}/pyogrio"
+          - cd "${{ "${SP_DIR}" if unix else "%SP_DIR%" }}/pyogrio"
           - abi3audit -s -v --assume-minimum-abi3 ${{ python_min }} ${{ abi3_bins }}
 
 about:
   license: MIT
   license_file: LICENSE
-  summary: Vectorized vector I/O using GDAL
+  summary: Vectorized spatial vector file format I/O using GDAL/OGR
   description: |
     Provide faster I/O using GDAL OGR to read / write vector geospatial files.
     Intended for use with libraries that consume WKB for their internal
